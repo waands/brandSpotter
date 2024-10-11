@@ -39,37 +39,52 @@ class _MyAppState extends State<MyApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       home: Scaffold(
-        body: _pages[_selectedIndex], // Mostra a página correspondente à aba.
-        bottomNavigationBar: ResponsiveNavigationBar(
-          selectedIndex: _selectedIndex,
-          onTabChange: changeTab, // Atualiza a aba ativa.
-          textStyle: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-          ),
-          // Botões da barra de navegação, com ícones e textos.
-          navigationBarButtons: const <NavigationBarButton>[
-            NavigationBarButton(
-              text: 'Camera',
-              icon: Icons.camera_alt,
-              backgroundGradient: LinearGradient(
-                colors: [Colors.yellow, Colors.green, Colors.blue],
+        backgroundColor: Colors.grey[100],
+        body: Stack(
+          children: [
+            _pages[_selectedIndex],
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                color: Colors.transparent, // Fundo transparente
+                child: ResponsiveNavigationBar(
+                  backgroundBlur: 0,
+                  selectedIndex: _selectedIndex,
+                  onTabChange: changeTab,
+                  textStyle: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  backgroundColor: const Color.fromARGB(255, 66, 66, 66),
+                  // Botões da barra de navegação, com ícones e textos.
+                  navigationBarButtons: const <NavigationBarButton>[
+                    NavigationBarButton(
+                      text: 'Camera',
+                      icon: Icons.camera_alt,
+                      backgroundGradient: LinearGradient(
+                        colors: [Colors.yellow, Colors.green, Colors.blue],
+                      ),
+                    ),
+                    NavigationBarButton(
+                      text: 'Histórico',
+                      icon: Icons.history,
+                      backgroundGradient: LinearGradient(
+                        colors: [Colors.cyan, Colors.teal],
+                      ),
+                    ),
+                    NavigationBarButton(
+                      text: 'Configurações',
+                      icon: Icons.settings,
+                      backgroundGradient: LinearGradient(
+                        colors: [Colors.green, Colors.yellow],
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            NavigationBarButton(
-              text: 'Histórico',
-              icon: Icons.star,
-              backgroundGradient: LinearGradient(
-                colors: [Colors.cyan, Colors.teal],
-              ),
-            ),
-            NavigationBarButton(
-              text: 'Configurações',
-              icon: Icons.settings,
-              backgroundGradient: LinearGradient(
-                colors: [Colors.green, Colors.yellow],
-              ),
-            ),
+            )
           ],
         ),
       ),
@@ -104,23 +119,39 @@ class _CameraPageState extends State<CameraPage> {
 
   // Função para selecionar uma imagem da câmera ou galeria.
   Future<void> pick(ImageSource source) async {
-    final XFile? pickedFile = await imagePicker.pickImage(source: source);
+    try {
+      print("pick method called with source: $source");
 
-    if (pickedFile != null) {
-      // Salva a imagem localmente no diretório da aplicação.
-      final directory = await getApplicationDocumentsDirectory();
-      final String fileName = path.basename(pickedFile.path);
-      final String localPath = path.join(directory.path, fileName);
-      final File localImage = await File(pickedFile.path).copy(localPath);
+      final XFile? pickedFile = await imagePicker.pickImage(source: source);
+      print("pickedFile: $pickedFile");
 
-      // Atualiza o estado com a nova imagem e a data.
-      setState(() {
-        imageFile = localImage;
-        photoDate = DateTime.now(); // Define a data atual
-      });
+      if (pickedFile != null) {
+        final directory = await getApplicationDocumentsDirectory();
+        final String fileName = path.basename(pickedFile.path);
+        final String localPath = path.join(directory.path, fileName);
+        final File localImage = await File(pickedFile.path).copy(localPath);
 
-      // Realiza o upload da imagem para o servidor.
-      await uploadImage(localImage);
+        setState(() {
+          imageFile = localImage;
+          photoDate = DateTime.now(); // Set the current date and time
+        });
+
+        print("Image exists: $imageFile");
+
+        // Send the image to the remote server
+        // await uploadImage(localImage);
+
+        // Reload images to update the history
+        await (context.findAncestorStateOfType<_HistoryPageState>())
+            ?._loadImages();
+
+        // Show image details in a modal
+        showImageDetails(context, localImage, photoDate!);
+      } else {
+        print("No image selected");
+      }
+    } catch (e) {
+      print("Error in pick method: $e");
     }
   }
 
@@ -143,48 +174,12 @@ class _CameraPageState extends State<CameraPage> {
 
   @override
   Widget build(BuildContext context) {
+    //String formattedDate = photoDate != null
+
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Card(
-            elevation: 5, // Elevação do card para dar um efeito de sombra.
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Exibe a imagem selecionada, se houver.
-                imageFile != null
-                    ? Image.file(
-                        imageFile!,
-                        height: MediaQuery.of(context).size.width,
-                        width: MediaQuery.of(context).size.width,
-                        fit: BoxFit.cover,
-                      )
-                    : const SizedBox(),
-                // Se a imagem for carregada, exibe o texto da data.
-                imageFile != null
-                    ? const Padding(
-                        padding: EdgeInsets.all(8.0),
-                        child: Text(
-                          'Data da foto?',
-                          style: TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.bold),
-                        ),
-                      )
-                    : const SizedBox.shrink(),
-                // Exibe uma área de informações sobre práticas da empresa.
-                imageFile != null
-                    ? const Padding(
-                        padding: EdgeInsets.all(8.0),
-                        child: Text(
-                          'Informações sobre práticas da empresa? talvez colocar uns ícones aqui ou uma lista ou estrelas?',
-                          style: TextStyle(fontSize: 14),
-                        ),
-                      )
-                    : const SizedBox.shrink(),
-              ],
-            ),
-          ),
           const SizedBox(height: 16),
           // Botão para abrir o modal que permite escolher entre câmera e galeria.
           ElevatedButton(
@@ -219,6 +214,7 @@ class _CameraPageState extends State<CameraPage> {
                           leading: Icon(Icons.photo_library),
                           title: Text('Gallery'),
                           onTap: () {
+                            print("ei");
                             pick(ImageSource.gallery);
                             Navigator.pop(context);
                           },
@@ -239,8 +235,36 @@ class _CameraPageState extends State<CameraPage> {
             },
             style: ElevatedButton.styleFrom(
               elevation: 5, // Elevação do botão quando pressionado.
+              shape: const CircleBorder(
+                side: BorderSide(
+                  color: Colors.cyan, // Cor da borda
+                  width: 8.0, // Largura da borda
+                ),
+              ),
             ),
-            child: const Text('Imagem de input'),
+            child: const Padding(
+              padding: EdgeInsets.all(40.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons
+                        .document_scanner, //aqui a gente podia colocar nossa logo
+                    color: Colors.cyan,
+                    size: 100,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Analisar',
+            style: TextStyle(
+              color: Colors.cyan,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ],
       ),
@@ -272,11 +296,15 @@ void showImageDetails(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   // Exibe a imagem selecionada em detalhes.
-                  Image.file(
-                    imageFile,
-                    height: MediaQuery.of(context).size.width,
-                    width: MediaQuery.of(context).size.width,
-                    fit: BoxFit.cover,
+                  ClipRRect(
+                    borderRadius:
+                        const BorderRadius.vertical(top: Radius.circular(16.0)),
+                    child: Image.file(
+                      imageFile,
+                      height: MediaQuery.of(context).size.width,
+                      width: MediaQuery.of(context).size.width,
+                      fit: BoxFit.cover,
+                    ),
                   ),
                   const Padding(
                     padding: EdgeInsets.all(8.0),
@@ -304,61 +332,99 @@ void showImageDetails(
 }
 
 /// Página de histórico, onde o usuário pode ver as imagens salvas.
-class HistoryPage extends StatelessWidget {
+class HistoryPage extends StatefulWidget {
   const HistoryPage({super.key});
 
-  // Função que retorna as imagens salvas localmente.
+  @override
+  _HistoryPageState createState() => _HistoryPageState();
+}
+
+class _HistoryPageState extends State<HistoryPage>
+    with AutomaticKeepAliveClientMixin {
+  List<File> _images = []; // Lista para armazenar as imagens carregadas
+  bool _isLoaded =
+      false; // Variável para controlar se as imagens já foram carregadas
+
+  // Função para obter as últimas 10 imagens salvas localmente
   Future<List<File>> _getSavedImages() async {
     final directory = await getApplicationDocumentsDirectory();
     final List<FileSystemEntity> files = directory.listSync();
-    return files.whereType<File>().toList();
+
+    // Filtra apenas os arquivos de imagem
+    List<File> images = files.whereType<File>().toList();
+
+    // Filtra arquivos vazios
+    images = images.where((file) => file.lengthSync() > 0).toList();
+
+    // Ordena as imagens pela data de modificação (mais recentes primeiro)
+    images.sort((a, b) {
+      DateTime aModified = File(a.path).lastModifiedSync();
+      DateTime bModified = File(b.path).lastModifiedSync();
+      return bModified.compareTo(aModified);
+    });
+
+    // Retorna as últimas 10 imagens
+    return images.take(10).toList();
   }
+
+  // Função chamada quando o widget é inicializado
+  @override
+  void initState() {
+    super.initState();
+    _loadImages(); // Carrega as imagens ao iniciar
+  }
+
+  // Função para carregar as imagens do dispositivo (chamada uma vez)
+  Future<void> _loadImages() async {
+    if (!_isLoaded) {
+      // Verifica se as imagens já foram carregadas
+      try {
+        final recentImages = await _getSavedImages();
+        setState(() {
+          _images = recentImages;
+          _isLoaded = true; // Marca que as imagens já foram carregadas
+        });
+      } catch (e) {
+        print('Error loading images: $e');
+      }
+    }
+  }
+
+  // Mantém o estado da página em cache quando ela não está visível
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Necessário para manter o estado
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('History'),
-      ),
-      body: FutureBuilder<List<File>>(
-        future: _getSavedImages(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-                child:
-                    CircularProgressIndicator()); // Indicador de carregamento.
-          } else if (snapshot.hasError) {
-            return const Center(
-                child: Text('Error loading images')); // Mensagem de erro.
-          } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(
-                child: Text('No images found')); // Nenhuma imagem encontrada.
-          } else {
-            final images = snapshot.data!;
-            // Exibe as imagens salvas em um grid.
-            return GridView.builder(
+      body: _images.isEmpty
+          ? const Center(
+              child: Text(
+                  'Nenhuma logo analisada ainda...')) // Exibe se não houver imagens
+          : GridView.builder(
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                crossAxisSpacing: 4.0,
-                mainAxisSpacing: 4.0,
+                crossAxisCount: 2, // Quantidade de colunas
+                crossAxisSpacing: 5.0, // Espaçamento horizontal
+                mainAxisSpacing: 5.0, // Espaçamento vertical
               ),
-              itemCount: images.length,
+              itemCount: _images.length, // Número de imagens a serem exibidas
               itemBuilder: (context, index) {
                 return GestureDetector(
                   onTap: () {
                     showImageDetails(
                       context,
-                      images[index],
-                      File(images[index].path).lastModifiedSync(),
+                      _images[index],
+                      File(_images[index].path).lastModifiedSync(),
                     );
                   },
-                  child: Image.file(images[index]),
+                  child: Image.file(
+                    _images[index],
+                    fit: BoxFit.cover, // Faz a imagem se ajustar ao grid
+                  ),
                 );
               },
-            );
-          }
-        },
-      ),
+            ),
     );
   }
 }
